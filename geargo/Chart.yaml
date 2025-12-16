@@ -9,9 +9,9 @@ keywords:
   - marketplace
   - rental
   - geargo
-home: https://github.com/fred4impact/geargo
+home: https://github.com/fred4impact/geargo-helm
 sources:
-  - https://github.com/fred4impact/geargo
+  - https://github.com/fred4impact/geargo-helm
 maintainers:
   - name: GearGo Team
     email: team@geargo.com

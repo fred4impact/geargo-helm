@@ -15,9 +15,9 @@ spec:
   # Update the repoURL, targetRevision, and path based on your Git repository structure
   source:
     # Option 1: If Helm chart is in a Git repository
-    repoURL: https://github.com/YOUR_USERNAME/geargo-helm.git
+    repoURL: https://github.com/fred4impact/geargo-helm.git
     targetRevision: main  # or your default branch (main, master, etc.)
-    path: helm/geargo  # Path to Helm chart directory in the repository
+    path: /geargo  # Path to Helm chart directory in the repository
     helm:
       # Option A: Use values file from the repository
       valueFiles:
