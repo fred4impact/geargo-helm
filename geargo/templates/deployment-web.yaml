@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "geargo.fullname" . }}-web
+  labels:
+    {{- include "geargo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.web.replicaCount | default .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "geargo.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "geargo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: web
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "geargo.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.initContainers }}
+      initContainers:
+        {{- toYaml .Values.initContainers | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: web
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.database.secretName }}
+              key: database-url
+        - name: REDIS_URL
+          value: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}/0"
+        - name: DEBUG
+          value: {{ .Values.app.debug | quote }}
+        - name: ALLOWED_HOSTS
+          value: {{ .Values.app.django.allowedHosts | quote }}
+        - name: CSRF_TRUSTED_ORIGINS
+          value: {{ .Values.app.django.csrfTrustedOrigins | quote }}
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.app.django.secretKeySecretName }}
+              key: {{ .Values.app.django.secretKeySecretKey }}
+        - name: DJANGO_SETTINGS_MODULE
+          value: "geargo_project.settings"
+        {{- if .Values.env }}
+        {{- toYaml .Values.env | nindent 8 }}
+        {{- end }}
+        {{- if .Values.configMap.enabled }}
+        envFrom:
+        - configMapRef:
+            name: {{ include "geargo.fullname" . }}-config
+        {{- end }}
+        livenessProbe:
+          {{- toYaml .Values.web.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.web.readinessProbe | nindent 10 }}
+        resources:
+          {{- toYaml .Values.web.resources | nindent 10 }}
+        volumeMounts:
+        - name: staticfiles
+          mountPath: /app/staticfiles
+        - name: media
+          mountPath: /app/media
+        {{- if .Values.extraVolumeMounts }}
+        {{- toYaml .Values.extraVolumeMounts | nindent 8 }}
+        {{- end }}
+        command: ["gunicorn"]
+        args:
+          - "--bind"
+          - "0.0.0.0:8000"
+          - "--workers"
+          - "4"
+          - "--timeout"
+          - "120"
+          - "--access-logfile"
+          - "-"
+          - "--error-logfile"
+          - "-"
+          - "geargo_project.wsgi:application"
+      volumes:
+      {{- if .Values.persistence.static.enabled }}
+      - name: staticfiles
+        persistentVolumeClaim:
+          claimName: {{ include "geargo.fullname" . }}-static
+      {{- else }}
+      - name: staticfiles
+        emptyDir: {}
+      {{- end }}
+      {{- if .Values.persistence.media.enabled }}
+      - name: media
+        persistentVolumeClaim:
+          claimName: {{ include "geargo.fullname" . }}-media
+      {{- else }}
+      - name: media
+        emptyDir: {}
+      {{- end }}
+      {{- if .Values.extraVolumes }}
+      {{- toYaml .Values.extraVolumes | nindent 6 }}
+      {{- end }}
+      {{- with .Values.web.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.web.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.web.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+

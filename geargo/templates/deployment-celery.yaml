@@ -1,0 +1,105 @@
+{{- if .Values.celery.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "geargo.fullname" . }}-celery
+  labels:
+    {{- include "geargo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: celery
+spec:
+  replicas: {{ .Values.celery.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "geargo.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: celery
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "geargo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: celery
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "geargo.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: celery
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.database.secretName }}
+              key: database-url
+        - name: REDIS_URL
+          value: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}/0"
+        - name: DEBUG
+          value: {{ .Values.app.debug | quote }}
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.app.django.secretKeySecretName }}
+              key: {{ .Values.app.django.secretKeySecretKey }}
+        - name: DJANGO_SETTINGS_MODULE
+          value: "geargo_project.settings"
+        {{- if .Values.env }}
+        {{- toYaml .Values.env | nindent 8 }}
+        {{- end }}
+        {{- if .Values.configMap.enabled }}
+        envFrom:
+        - configMapRef:
+            name: {{ include "geargo.fullname" . }}-config
+        {{- end }}
+        command: ["celery"]
+        args:
+          - "-A"
+          - "geargo_project"
+          - "worker"
+          - "-l"
+          - "info"
+          - "--concurrency"
+          - "4"
+        resources:
+          {{- toYaml .Values.celery.resources | nindent 10 }}
+        volumeMounts:
+        - name: media
+          mountPath: /app/media
+        {{- if .Values.extraVolumeMounts }}
+        {{- toYaml .Values.extraVolumeMounts | nindent 8 }}
+        {{- end }}
+      volumes:
+      {{- if .Values.persistence.media.enabled }}
+      - name: media
+        persistentVolumeClaim:
+          claimName: {{ include "geargo.fullname" . }}-media
+      {{- else }}
+      - name: media
+        emptyDir: {}
+      {{- end }}
+      {{- if .Values.extraVolumes }}
+      {{- toYaml .Values.extraVolumes | nindent 6 }}
+      {{- end }}
+      {{- with .Values.celery.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.celery.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.celery.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+

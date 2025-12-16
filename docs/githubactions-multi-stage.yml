@@ -1,0 +1,288 @@
+name: CI / CD - Multi-stage Pipeline (geargo)
+
+# triggered for pushes, PRs and manual runs
+on:
+  push:
+    branches:
+      - main
+      - 'release/**'
+      - 'hotfix/**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.10'
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+# top-level defaults
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # ---------------------------
+  # LINT
+  # ---------------------------
+  lint:
+    name: Lint (flake8)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: v1-pip-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            v1-pip-${{ runner.os }}-
+
+      - name: Install linters
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+
+      - name: Run flake8
+        run: |
+          if [ -f setup.cfg ] || [ -f .flake8 ]; then flake8 .; else flake8 . || true; fi
+
+  # ---------------------------
+  # TEST
+  # ---------------------------
+  test:
+    name: Test (pytest) + Coverage
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache virtualenv / pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: v1-pip-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            v1-pip-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest pytest-cov || true
+
+      - name: Run tests with coverage
+        run: |
+          if [ -d tests ]; then pytest --maxfail=1 --disable-warnings -q --cov=.; else echo "No tests found"; fi
+
+      - name: Upload test results & coverage as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: |
+            ./**/pytest*.xml
+            coverage.xml
+            htmlcov || true
+
+  # ---------------------------
+  # SECURITY/SCA
+  # ---------------------------
+  security:
+    name: Security & SCA (bandit, safety)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety || true
+
+      - name: Run Bandit (static security scan)
+        run: |
+          if [ -d . ]; then bandit -r . -lll || true; fi
+
+      - name: Run Safety (dependency scan)
+        run: |
+          if [ -f requirements.txt ]; then safety check --full-report -r requirements.txt || true; else echo "No requirements.txt"; fi
+
+  # ---------------------------
+  # BUILD / PACKAGE
+  # ---------------------------
+  package:
+    name: Build package & create artifact
+    runs-on: ubuntu-latest
+    needs: security
+    outputs:
+      artifact-name: geargo-dist
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel build || true
+
+      - name: Build sdist/wheel (if setup.py/pyproject exists)
+        run: |
+          if [ -f pyproject.toml ] || [ -f setup.py ]; then
+            python -m build --sdist --wheel -o dist || true
+          else
+            echo "No pyproject.toml or setup.py found - skipping python build"
+          fi
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: geargo-dist
+          path: dist || true
+
+  # ---------------------------
+  # DOCKER BUILD & PUSH
+  # ---------------------------
+  docker:
+    name: Docker Build & Push
+    runs-on: ubuntu-latest
+    needs: package
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for cross build)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Configure cache-from (build cache)
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: buildx-${{ github.sha }}
+          restore-keys: |
+            buildx-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/geargo:latest,${{ secrets.DOCKER_USERNAME }}/geargo:${{ github.sha }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
+
+      - name: Save docker image info artifact
+        run: echo "image=${{ secrets.DOCKER_USERNAME }}/geargo:${{ github.sha }}" > image.txt
+      - name: Upload image info
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-info
+          path: image.txt
+
+  # ---------------------------
+  # DEPLOY: STAGING
+  # ---------------------------
+  deploy-staging:
+    name: Deploy → Staging
+    runs-on: ubuntu-latest
+    needs: docker
+    environment: staging
+    steps:
+      - name: Download image info
+        uses: actions/download-artifact@v4
+        with:
+          name: image-info
+
+      - name: Read image tag
+        run: |
+          cat image.txt
+
+      - name: Deploy to server (staging) via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_SERVER_IP }}
+          username: ${{ secrets.STAGING_SERVER_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            IMAGE=${{ secrets.DOCKER_USERNAME }}/geargo:${{ github.sha }}
+            docker pull $IMAGE || true
+            docker stop geargo-staging || true
+            docker rm geargo-staging || true
+            docker run -d -p 8080:5000 --name geargo-staging $IMAGE
+
+  # ---------------------------
+  # PROMOTE TO PRODUCTION (manual approval)
+  # ---------------------------
+  deploy-production:
+    name: Deploy → Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    environment:
+      name: production
+      url: https://your-production-url.example.com
+    # require manual approval in repo settings/environments (recommended)
+    steps:
+      - name: Download image info
+        uses: actions/download-artifact@v4
+        with:
+          name: image-info
+
+      - name: Read image tag
+        run: |
+          cat image.txt
+
+      - name: Deploy to server (production) via SSH
+        if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_SERVER_IP }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            IMAGE=${{ secrets.DOCKER_USERNAME }}/geargo:${{ github.sha }}
+            docker pull $IMAGE || true
+            docker stop geargo || true
+            docker rm geargo || true
+            docker run -d -p 80:5000 --name geargo $IMAGE

@@ -1,0 +1,19 @@
+apiVersion: v2
+name: geargo
+description: A Helm chart for GearGo - AI-Powered Rental Marketplace
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - django
+  - marketplace
+  - rental
+  - geargo
+home: https://github.com/fred4impact/geargo
+sources:
+  - https://github.com/fred4impact/geargo
+maintainers:
+  - name: GearGo Team
+    email: team@geargo.com
+dependencies: []
+

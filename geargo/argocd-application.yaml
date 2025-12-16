@@ -1,0 +1,77 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: geargo
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    app: geargo
+    environment: production
+spec:
+  project: default
+  
+  # Source repository configuration
+  # Update the repoURL, targetRevision, and path based on your Git repository structure
+  source:
+    # Option 1: If Helm chart is in a Git repository
+    repoURL: https://github.com/YOUR_USERNAME/geargo-helm.git
+    targetRevision: main  # or your default branch (main, master, etc.)
+    path: helm/geargo  # Path to Helm chart directory in the repository
+    helm:
+      # Option A: Use values file from the repository
+      valueFiles:
+        - values-production.yaml
+      
+      # Option B: Use inline values (uncomment and customize)
+      # values: |
+      #   image:
+      #     repository: YOUR_ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/geargo-app
+      #     tag: "v1.0.0"
+      #   database:
+      #     host: geargo-db.xxxxx.us-west-2.rds.amazonaws.com
+      #   ingress:
+      #     hosts:
+      #       - host: geargo.yourdomain.com
+      #         paths:
+      #           - path: /
+      #             pathType: Prefix
+    
+    # Option 2: If using a Helm repository (uncomment and configure)
+    # repoURL: https://charts.geargo.com
+    # chart: geargo
+    # targetRevision: 1.0.0
+    # helm:
+    #   valueFiles:
+    #     - values-production.yaml
+  
+  # Destination cluster and namespace
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: geargo
+  
+  # Sync policy
+  syncPolicy:
+    # Automated sync options
+    automated:
+      prune: true      # Automatically delete resources that are no longer in Git
+      selfHeal: true   # Automatically sync when cluster state drifts from Git
+      allowEmpty: false
+    
+    # Sync options
+    syncOptions:
+      - CreateNamespace=true              # Create namespace if it doesn't exist
+      - PrunePropagationPolicy=foreground # Wait for resources to be deleted
+      - PruneLast=true                    # Prune resources last during sync
+    
+    # Retry configuration
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  # Number of revisions to keep in history
+  revisionHistoryLimit: 10
+

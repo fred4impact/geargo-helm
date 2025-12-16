@@ -1,0 +1,44 @@
+{{- if .Values.persistence.static.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "geargo.fullname" . }}-static
+  labels:
+    {{- include "geargo.labels" . | nindent 4 }}
+  {{- with .Values.persistence.static.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.static.accessMode }}
+  {{- if .Values.persistence.static.storageClass }}
+  storageClassName: {{ .Values.persistence.static.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.static.size }}
+{{- end }}
+
+{{- if .Values.persistence.media.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "geargo.fullname" . }}-media
+  labels:
+    {{- include "geargo.labels" . | nindent 4 }}
+  {{- with .Values.persistence.media.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.media.accessMode }}
+  {{- if .Values.persistence.media.storageClass }}
+  storageClassName: {{ .Values.persistence.media.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.media.size }}
+{{- end }}
+
