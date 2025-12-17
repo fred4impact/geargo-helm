@@ -26,6 +26,11 @@ ssh -i ~/.ssh/your-key.pem ec2-user@<bastion-public-ip>
 
 # Configure kubectl on bastion
 ./configure-kubectl.sh
+
+AWS Configure 
+Add 
+ACCESS KEYS  ———————
+SECRET ACCESS  KEYS ———————
 ```
 
 ### 1.2 Configure kubectl Locally (Alternative)

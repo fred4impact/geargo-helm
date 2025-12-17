@@ -7,7 +7,7 @@ fullnameOverride: ""
 
 # Image configuration
 image:
-  repository: YOUR_ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/geargo-app
+  repository: 578690312663.dkr.ecr.us-east-1.amazonaws.com/geargo
   pullPolicy: IfNotPresent
   tag: "v1.0.0"
 
@@ -129,7 +129,7 @@ ingress:
     alb.ingress.kubernetes.io/healthy-threshold-count: "2"
     alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
   hosts:
-    - host: geargo.example.com
+    - host: geargo.bilarn.com
       paths:
         - path: /
           pathType: Prefix
@@ -173,8 +173,8 @@ app:
   django:
     secretKeySecretName: geargo-django-secret
     secretKeySecretKey: secret-key
-    allowedHosts: "geargo.example.com,*.elb.amazonaws.com"
-    csrfTrustedOrigins: "https://geargo.example.com"
+    allowedHosts: "geargo.bilarn.com,*.elb.amazonaws.com"
+    csrfTrustedOrigins: "https://geargo.bilarn.com"
   
   # Static files
   staticFiles:
@@ -268,7 +268,7 @@ podDisruptionBudget:
 migration:
   enabled: true
   image:
-    repository: YOUR_ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/geargo-app
+    repository: 578690312663.dkr.ecr.us-east-1.amazonaws.com/geargo
     tag: "v1.0.0"
     pullPolicy: IfNotPresent
   
