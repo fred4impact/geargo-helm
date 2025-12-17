@@ -1,0 +1,50 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "geargo.fullname" . }}-postgres
+  labels:
+    {{- include "geargo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "geargo.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        {{- include "geargo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+        imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+        ports:
+          - containerPort: {{ .Values.postgres.port }}
+            name: postgres
+        env:
+          - name: POSTGRES_DB
+            value: "{{ .Values.postgres.database }}"
+          - name: POSTGRES_USER
+            value: "{{ .Values.postgres.username }}"
+          - name: POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{- if .Values.database.secretName }}{{ .Values.database.secretName }}{{- else }}{{ include "geargo.fullname" . }}-postgres-secret{{- end }}
+                key: password
+        volumeMounts:
+          - name: pgdata
+            mountPath: /var/lib/postgresql/data
+      volumes:
+      {{- if .Values.postgres.persistence.enabled }}
+      - name: pgdata
+        persistentVolumeClaim:
+          claimName: {{ include "geargo.fullname" . }}-postgres-pvc
+      {{- else }}
+      - name: pgdata
+        emptyDir: {}
+      {{- end }}
+{{- end }}

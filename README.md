@@ -1,3 +1,105 @@
+# GearGo Helm chart
+
+This repository contains a Helm chart for deploying the GearGo application and an optional in-cluster PostgreSQL for testing.
+
+Contents
+- `Chart.yaml`, `values.yaml`, and `templates/` — the Helm chart
+- `.github/workflows/ci-deploy.yml` — CI workflow: builds Docker image, pushes to ECR, deploys Helm
+
+## Quick goals
+- Provide a simple way to run GearGo in a Kubernetes cluster for development/test
+- Optionally deploy a single-replica PostgreSQL inside the cluster (not intended for production)
+- Provide a CI workflow to build/push Docker images to ECR and run Helm deploys
+
+## Requirements
+- Helm 3
+- kubectl configured for your target cluster
+- Docker (for local builds)
+
+## Important files
+- `values.yaml` — main configuration. Notable sections:
+  - `postgres` — controls the in-cluster Postgres (enabled by default, password empty)
+  - `database` — used by the app; `database.secretName` can be pointed to an external secret (RDS)
+  - `image` — image repository and tag for the application
+
+- `templates/postgres-*` — templates added to optionally deploy Postgres, PVC, and Secret
+
+## Local validation (no cluster changes)
+Run these from the repository root:
+```bash
+helm lint .
+helm template geargo . --namespace geargo
+```
+
+## Install to a cluster (recommended: test namespace)
+Set a strong Postgres password before installing. The chart enables Postgres by default but leaves
+`postgres.password` empty to avoid committing secrets.
+
+Example (zsh):
+```bash
+helm upgrade --install geargo . -n geargo --create-namespace \
+  --set postgres.enabled=true \
+  --set postgres.password='ReplaceWithStrongPassword!' \
+  --set image.repository=123456789012.dkr.ecr.us-east-1.amazonaws.com/geargo \
+  --set image.tag=v1.2.3
+```
+
+Check resources:
+```bash
+kubectl -n geargo get all
+kubectl -n geargo get pvc
+kubectl -n geargo logs -l app.kubernetes.io/component=postgres -c postgres
+```
+
+To port-forward Postgres locally:
+```bash
+kubectl -n geargo port-forward svc/geargo-postgres 5432:5432
+PGPASSWORD='ReplaceWithStrongPassword!' psql -h 127.0.0.1 -p 5432 -U geargo geargo_db
+```
+
+## Using an external database (RDS/Aurora)
+If you use a managed DB in production keep `postgres.enabled=false` and set the following in `values.yaml` or via `--set`:
+- `database.host` — DB hostname
+- `database.port` — DB port (default 5432)
+- `database.secretName` — name of Kubernetes Secret containing DB credentials and `database-url`
+
+The web and celery containers read `DATABASE_URL` from the secret referenced by `database.secretName` (or the generated secret when in-cluster Postgres is enabled).
+
+## GitHub Actions workflow
+The included workflow `.github/workflows/ci-deploy.yml` performs:
+1. Build Docker image and push to ECR
+2. Deploy Helm chart to the target cluster
+
+Secrets required in the GitHub repository settings (Actions → Secrets and variables):
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_REGION`
+- `AWS_ACCOUNT_ID`
+- `ECR_REPOSITORY` (e.g., `geargo`)
+- `POSTGRES_PASSWORD` (strong password to pass into Helm)
+- `KUBE_CONFIG_DATA` — base64 of your kubeconfig file used by kubectl/helm in CI
+
+Notes:
+- `KUBE_CONFIG_DATA` must be base64-encoded. On macOS/Linux: `cat ~/.kube/config | base64 | pbcopy` (or copy output and paste into the secret value).
+- The workflow uses the pushed image tag `${{ github.sha }}` — if you prefer semver tags, adjust the workflow accordingly.
+
+## Security notes
+- Do not commit passwords or plaintext credentials to the repository.
+- For production, prefer a managed DB (RDS/Aurora), multi-AZ, regular backups, and a production-grade Helm chart (for example, Bitnami PostgreSQL).
+- Consider using SealedSecrets, External Secrets, or a secrets operator to manage credentials in the cluster.
+
+## Troubleshooting
+- Helm lint errors: fix template errors reported by `helm lint` — read the error and the template name it references.
+- If PVC remains Pending: verify your cluster has a default StorageClass or set `postgres.persistence.storageClass` in `values.yaml`.
+- App can't connect to DB: verify the secret name referenced by `database.secretName` contains `database-url` and correct credentials.
+
+## Next steps I can help with
+- Replace the in-chart Postgres with the Bitnami Postgres subchart (HA + backups)
+- Add SealedSecrets / External Secrets integration
+- Tweak the GitHub Actions workflow to use image tags (semver) and add deployment approvals
+
+---
+If you want I can now update the README with cluster-specific examples (EKS / GKE) or add a short section describing how to rotate Postgres credentials safely.
 # GearGo Helm Chart
 
 A Helm chart for deploying GearGo - AI-Powered Rental Marketplace to Kubernetes.

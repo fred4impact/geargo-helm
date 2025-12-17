@@ -39,7 +39,7 @@ spec:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: {{ .Values.database.secretName }}
+              name: {{- if .Values.database.secretName }}{{ .Values.database.secretName }}{{- else }}{{ include "geargo.fullname" . }}-postgres-secret{{- end }}
               key: database-url
         - name: REDIS_URL
           value: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}/0"

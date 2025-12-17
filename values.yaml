@@ -145,11 +145,39 @@ database:
   port: 5432
   name: geargo_db
   # Secret name containing database credentials
-  secretName: geargo-db-secret
+  secretName: ""
   # Secret keys
   secretKeys:
     username: db-user
     password: db-password
+
+# Optional in-cluster Postgres (disabled by default). If enabled this chart
+# will create a Postgres Deployment, Service, PVC and a Secret that contains
+# a `database-url` value used by the application containers. If you prefer
+# an external DB set `postgres.enabled` to false and provide `database.host`
+# and `database.secretName` pointing to your external credentials.
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "15-alpine"
+    pullPolicy: IfNotPresent
+
+  # Credentials and DB name (change these for production). When enabled the
+  # chart will create a Secret using these values unless you point
+  # `database.secretName` to an external secret.
+  username: geargo
+  # WARNING: leave empty in repository; set via --set, -f or CI secret
+  password: ""
+  database: geargo_db
+  port: 5432
+
+  # Persistence for Postgres data
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 10Gi
 
 # Redis configuration
 redis:
