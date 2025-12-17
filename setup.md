@@ -161,6 +161,24 @@ argocd login localhost:8080 --username admin --password <password>
 # Add the geargo-helm repository
 helm repo add geargo https://raw.githubusercontent.com/fred4impact/geargo-helm/master
 helm repo update
+
+
+### build and push docker  image 
+
+aws ecr get-login-password --region "us-east-1" | docker login --username AWS --password-stdin "578690312663.dkr.ecr.us-east-1.amazonaws.com/geargo.dkr.ecr.us-east-1.amazonaws.com"
+
+
+
+# build (optional)
+docker build -t geargo:latest .
+
+# tag for ECR
+docker tag geargo:latest 578690312663.dkr.ecr.us-east-1.amazonaws.com/geargo:latest
+
+
+# push
+docker push 578690312663.dkr.ecr.us-east-1.amazonaws.com/geargo:latest
+
 ```
 
 ### 4.2 Clone and Review Helm Chart (Recommended)
